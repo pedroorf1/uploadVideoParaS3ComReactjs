@@ -1,76 +1,95 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile, toBlobURL } from "@ffmpeg/util";
-// import { compressAndConvertToHLS as compress } from "../compress/compress";
 
 import { uploadFileToS3 } from "./UploadFileToS3";
 import { getVideoInformations } from "./getVideoInformations";
 
 function Upload() {
-  const [fileSelected, setFileSelected] = useState({ type: "", name: "" });
   const [fileBuffer, setFileBuffer] = useState(null);
-  const [fileUrl, setFileUrl] = useState(null);
   const [fileDownloadUrl, setFileDownloadUrl] = useState(null);
-  const [fileInputUrl, setFileInputUrl] = useState(null);
-  const fileInput = React.useRef();
+  const [fileInformations, setFileInformations] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const ffmpegRef = useRef(new FFmpeg());
   const videoRef = useRef(null);
   const messageRef = useRef(null);
+  console.log("\nAqui6");
 
-  const load = async () => {
-    const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
-    const ffmpeg = ffmpegRef.current;
-    ffmpeg.on("log", ({ message }) => {
-      console.log(message);
-    });
-    // toBlobURL is used to bypass CORS issue, urls with the same
-    // domain can be used directly.
+  const load = useCallback(async () => {
+    try {
+      const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
+      console.log("\nLoadFFmpeg: 1");
+      const ffmpeg = ffmpegRef.current;
+      ffmpeg.on("log", ({ message }) => {
+        console.log(message);
+      });
 
-    ffmpeg.on("progress", data => {
-      console.log(`Progress: ${data.time}`);
-      messageRef.current.innerText = `Progress: ${JSON.stringify(data)}`;
-    });
+      ffmpeg.on("progress", data => {
+        console.log(`Progress: ${data.time}`);
+        messageRef.current.innerText = `${
+          JSON.stringify(data).split(",")[0]
+        }\n ${!!fileInformations && fileInformations.duration}`;
+      });
+      // console.log("\nLoadFFmpeg: 2");
+      // await ffmpeg.load({
+      //   coreURL: await toBlobURL(
+      //     `${baseURL}/ffmpeg-core.js`,
+      //     "text/javascript"
+      //   ),
+      //   wasmURL: await toBlobURL(
+      //     `${baseURL}/ffmpeg-core.wasm`,
+      //     "application/wasm"
+      //   ),
+      // });
 
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-      wasmURL: await toBlobURL(
-        `${baseURL}/ffmpeg-core.wasm`,
-        "application/wasm"
-      ),
-    });
-    setLoaded(true);
-  };
+      const response = await fetch(`${baseURL}/ffmpeg-core.js`);
+      const script = await response.text();
+      const blob = new Blob([script], { type: "text/javascript" });
+      const scriptURL = URL.createObjectURL(blob);
+      // const scriptTag = document.createElement("script");
+      // scriptTag.src = scriptURL;
+      // document.body.appendChild(scriptTag);
 
+      const responseWasm = await fetch(`${baseURL}/ffmpeg-core.wasm`);
+      const wasm = await responseWasm.arrayBuffer();
+      const wasmBlob = new Blob([wasm], { type: "application/wasm" });
+      const wasmURL = URL.createObjectURL(wasmBlob);
+
+      await ffmpeg.load({ coreURL: scriptURL, wasmURL });
+      setLoaded(true);
+
+      console.log("\nLoadFFmpeg: 3");
+    } catch (err) {
+      console.error("\nErro ao carregar ffmpeg: ", err);
+      setLoaded(false);
+    }
+  }, []);
+  console.log("\nAqui5");
+  if (!loaded) {
+    (async () => {
+      await load();
+    })();
+  }
   useEffect(() => {
-    load();
     const file = videoRef.current?.files[0];
     if (file) {
       const src = URL.createObjectURL(file);
-      setFileUrl(videoRef.current?.files[0]);
       console.log("\nfileSelected", src);
     }
-  }, [loaded]);
-
+  }, []);
+  console.log("\nAqui4", loaded);
   const onChangeFile = async event => {
     const file = event.target.files[0];
     const fileBuffer = await file.arrayBuffer();
     setFileBuffer(fileBuffer);
-    setFileSelected(event.target.files[0]);
-    const videDuration = await getVideoInformations(event.target.files[0]);
-    console.log("\nvideDuration: ", videDuration);
+    const informations = await getVideoInformations(event.target.files[0]);
+    setFileInformations(informations);
+    console.log("\ninformations: ", informations);
   };
-
+  console.log("\nAqui3");
   const handleClick = async event => {
     event.preventDefault();
-    // let newArr = fileInput.current.files;
-    // handleUpload(fileSelected);
-    // for (let i = 0; i < newArr.length; i++) {
-    // }
-
-    // const response = await compress(fileSelected);
-    // console.log(response);
   };
 
   const handleUpload = fileSelected => {
@@ -81,13 +100,12 @@ function Upload() {
     }
   };
 
+  console.log("\nAqui2");
+
   const transcode = async () => {
-    // const videoURL =
-    //   "https://raw.githubusercontent.com/ffmpegwasm/testdata/master/video-15s.avi";
     const hashnamefile = uuidv4();
     const outputFilePath = "../../tempvideo" + hashnamefile;
     console.log("\noutputFilePath", outputFilePath);
-    const videoURL = fileUrl;
     const ffmpeg = ffmpegRef.current;
     await ffmpeg.writeFile(
       "input.avi",
@@ -103,20 +121,21 @@ function Upload() {
     const finalName = `${originalName}-${timestamp}`;
 
     alert("Comprimindo e convertendo vídeo...");
-    // ffmpeg.writeFile("input.mp4", await fetchFile(fileBuffer));
     ffmpeg.writeFile("input.mp4", new Uint8Array(fileBuffer));
 
     await ffmpeg.exec([
       "-i",
       "input.mp4",
-      "-c:v",
-      "libx264",
-      "-bsf:v",
-      "h264_mp4toannexb",
-      "-hls_time",
-      "2",
-      "-hls_playlist_type",
-      "vod",
+      // "-q",
+      // "23",
+      // "-c:v",
+      // "libx264",
+      // "-bsf:v",
+      // "h264_mp4toannexb",
+      // "-hls_time",
+      // "2",
+      // "-hls_playlist_type",
+      // "vod",
       `${finalName}.mp4`,
     ]);
     // await ffmpeg.exec([
@@ -154,6 +173,8 @@ function Upload() {
     }
   };
 
+  console.log("\nAqui");
+
   if (!loaded) {
     return <p>Carragando...</p>;
   }
@@ -163,20 +184,12 @@ function Upload() {
       <form className="upload-steps" onSubmit={handleClick}>
         <label>
           Upload file:
-          <input
-            type="file"
-            multiple
-            // ref={fileInput}
-            ref={videoRef}
-            onChange={onChangeFile}
-          />
+          <input type="file" multiple ref={videoRef} onChange={onChangeFile} />
         </label>
         <br />
         <button type="submit">Upload</button>
         <br />
-        <button onClick={transcode}>
-          Split video to segments of 180 sec. and plays 2nd segment
-        </button>
+        <button onClick={transcode}>Tranascode video</button>
         <br />
         <br />
         <p ref={messageRef}></p>

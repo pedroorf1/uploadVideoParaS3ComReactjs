@@ -1,12 +1,12 @@
 import AWSS3UploadAsh from 'aws-s3-upload-ash';
 
 const config = {
-  bucketName: process.env.REACT_APP_AWS_bucketname,
+  bucketName: process.env.REACT_APP_AWS_AWS_bucketname,
   dirName: 'uploads',
   region: process.env.REACT_APP_AWS_region,
-  accessKeyId: process.env.REACT_APP_AWS_accessKeyId,
-  secretAccessKey: process.env.REACT_APP_AWS_secretAccessKey,
-  s3Url: process.env.REACT_APP_AWS_s3url
+  accessKeyId: process.env.REACT_APP_AWS_AWS_accessKeyId,
+  secretAccessKey: process.env.REACT_APP_AWS_AWS_secretAccessKey,
+  s3Url: process.env.REACT_APP_AWS_AWS_s3url
 }
 
 export const uploadFileToS3 = async (file) => {

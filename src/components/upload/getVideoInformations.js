@@ -1,5 +1,3 @@
-import { type } from "@testing-library/user-event/dist/type";
-
 export const getVideoInformations = async (file) => {
   const fileCallbackToPromise = (fileObj) => {
     return Promise.race([
